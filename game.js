@@ -49,95 +49,212 @@ function animateBackground() {
 }
 animateBackground();
 
-
-// --- 2. Exclusive Mini-Game Logic ("Bug Catcher: SAU Code Rush") ---
+// --- 2. Classic Brick Breaker Logic ---
 const gameCanvas = document.getElementById('mini-game');
 const gCtx = gameCanvas.getContext('2d');
 const scoreEl = document.getElementById('score');
+const livesEl = document.getElementById('lives');
 const statusEl = document.getElementById('game-status');
 const startBtn = document.getElementById('start-game-btn');
 
-let gameInterval;
-let score = 0;
+let animationId;
 let isPlaying = false;
 
-let player = { x: 175, y: 260, width: 50, height: 16, speed: 6, dx: 0 };
-let bugs = [];
+// Game State
+let score = 0;
+let lives = 3;
 
-let keys = { ArrowLeft: false, ArrowRight: false, KeyA: false, KeyD: false };
+// Ball
+const ballRadius = 5;
+let x = gameCanvas.width / 2;
+let y = gameCanvas.height - 30;
+let dx = 3;
+let dy = -3;
 
-window.addEventListener('keydown', e => {
-  if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
-  if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
-});
+// Paddle
+const paddleHeight = 10;
+const paddleWidth = 75;
+let paddleX = (gameCanvas.width - paddleWidth) / 2;
 
-window.addEventListener('keyup', e => {
-  if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
-  if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
-});
+// Controls
+let rightPressed = false;
+let leftPressed = false;
 
-startBtn.addEventListener('click', () => {
-  if (!isPlaying) startGame();
-});
+// Bricks (7 columns x 5 rows to fit 400px width nicely)
+const brickRowCount = 5;
+const brickColumnCount = 7;
+const brickWidth = 45;
+const brickHeight = 15;
+const brickPadding = 8;
+const brickOffsetTop = 30;
+const brickOffsetLeft = 18.5;
+let bricks = [];
 
-function startGame() {
-  isPlaying = true;
-  score = 0;
-  scoreEl.textContent = score;
-  statusEl.textContent = "Playing...";
-  startBtn.textContent = "Restart Game";
-  bugs = [];
-  
-  if (gameInterval) clearInterval(gameInterval);
-  gameInterval = setInterval(updateGame, 1000 / 60);
+// Event Listeners
+document.addEventListener("keydown", keyDownHandler, false);
+document.addEventListener("keyup", keyUpHandler, false);
+startBtn.addEventListener('click', () => { if (!isPlaying) initGame(); });
+
+function keyDownHandler(e) {
+  if (e.key === "Right" || e.key === "ArrowRight" || e.key === "d" || e.key === "D") { rightPressed = true; }
+  else if (e.key === "Left" || e.key === "ArrowLeft" || e.key === "a" || e.key === "A") { leftPressed = true; }
 }
 
-function updateGame() {
-  gCtx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+function keyUpHandler(e) {
+  if (e.key === "Right" || e.key === "ArrowRight" || e.key === "d" || e.key === "D") { rightPressed = false; }
+  else if (e.key === "Left" || e.key === "ArrowLeft" || e.key === "a" || e.key === "A") { leftPressed = false; }
+}
 
-  // Player movement
-  if (keys.left && player.x > 0) player.x -= player.speed;
-  if (keys.right && player.x + player.width < gameCanvas.width) player.x += player.speed;
-
-  // Draw Player (Terminal Paddle)
-  gCtx.fillStyle = '#38bdf8';
-  gCtx.fillRect(player.x, player.y, player.width, player.height);
-
-  // Spawn bugs randomly
-  if (Math.random() < 0.03) {
-    bugs.push({
-      x: Math.random() * (gameCanvas.width - 20),
-      y: 0,
-      size: 16,
-      speed: 2 + Math.random() * 2
-    });
+function initBricks() {
+  bricks = [];
+  for (let c = 0; c < brickColumnCount; c++) {
+    bricks[c] = [];
+    for (let r = 0; r < brickRowCount; r++) {
+      bricks[c][r] = { x: 0, y: 0, status: 1 };
+    }
   }
+}
 
-  // Update & Draw Bugs
-  for (let i = bugs.length - 1; i >= 0; i--) {
-    let bug = bugs[i];
-    bug.y += bug.speed;
+function collisionDetection() {
+  for (let c = 0; c < brickColumnCount; c++) {
+    for (let r = 0; r < brickRowCount; r++) {
+      let b = bricks[c][r];
+      if (b.status === 1) {
+        if (x > b.x && x < b.x + brickWidth && y > b.y && y < b.y + brickHeight) {
+          dy = -dy;
+          b.status = 0;
+          score += 10;
+          scoreEl.textContent = score;
+          
+          if (score === brickRowCount * brickColumnCount * 10) {
+            statusEl.textContent = "YOU WIN!";
+            statusEl.style.color = "#34d399";
+            isPlaying = false;
+            cancelAnimationFrame(animationId);
+          }
+        }
+      }
+    }
+  }
+}
 
-    // Draw Bug Icon
-    gCtx.fillStyle = '#f43f5e';
-    gCtx.beginPath();
-    gCtx.arc(bug.x + 8, bug.y + 8, 8, 0, Math.PI * 2);
-    gCtx.fill();
+function drawBall() {
+  gCtx.beginPath();
+  gCtx.arc(x, y, ballRadius, 0, Math.PI * 2);
+  gCtx.fillStyle = "#ffffff";
+  gCtx.fill();
+  gCtx.closePath();
+}
 
-    // Collision check
-    if (
-      bug.x + 16 > player.x &&
-      bug.x < player.x + player.width &&
-      bug.y + 16 > player.y &&
-      bug.y < player.y + player.height
-    ) {
-      bugs.splice(i, 1);
-      score += 10;
-      scoreEl.textContent = score;
-    } else if (bug.y > gameCanvas.height) {
-      bugs.splice(i, 1);
+function drawPaddle() {
+  gCtx.beginPath();
+  gCtx.rect(paddleX, gameCanvas.height - paddleHeight, paddleWidth, paddleHeight);
+  gCtx.fillStyle = "#2563eb"; // Classic Blue Paddle
+  gCtx.fill();
+  gCtx.closePath();
+}
+
+function drawBricks() {
+  for (let c = 0; c < brickColumnCount; c++) {
+    for (let r = 0; r < brickRowCount; r++) {
+      if (bricks[c][r].status === 1) {
+        let brickX = (c * (brickWidth + brickPadding)) + brickOffsetLeft;
+        let brickY = (r * (brickHeight + brickPadding)) + brickOffsetTop;
+        bricks[c][r].x = brickX;
+        bricks[c][r].y = brickY;
+        
+        gCtx.beginPath();
+        gCtx.rect(brickX, brickY, brickWidth, brickHeight);
+        gCtx.fillStyle = "#b91c1c"; // Classic Dark Red Bricks
+        gCtx.strokeStyle = "#450a0a";
+        gCtx.lineWidth = 2;
+        gCtx.fill();
+        gCtx.stroke();
+        gCtx.closePath();
+      }
+    }
+  }
+}
+
+function draw() {
+  gCtx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+  
+  // Custom light grey background like the classic game
+  gCtx.fillStyle = "#e2e8f0";
+  gCtx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+  
+  drawBricks();
+  drawBall();
+  drawPaddle();
+  collisionDetection();
+
+  // Wall collision (Left/Right)
+  if (x + dx > gameCanvas.width - ballRadius || x + dx < ballRadius) { dx = -dx; }
+  
+  // Wall collision (Top)
+  if (y + dy < ballRadius) { dy = -dy; }
+  // Paddle / Bottom collision
+  else if (y + dy > gameCanvas.height - ballRadius) {
+    if (x > paddleX && x < paddleX + paddleWidth) {
+      // Add slight angle variance based on where it hits the paddle
+      let hitPoint = x - (paddleX + paddleWidth / 2);
+      dx = hitPoint * 0.15;
+      dy = -dy;
+    } else {
+      lives--;
+      livesEl.textContent = lives;
+      if (!lives) {
+        statusEl.textContent = "GAME OVER";
+        statusEl.style.color = "#f87171";
+        isPlaying = false;
+        return;
+      } else {
+        // Reset position
+        x = gameCanvas.width / 2;
+        y = gameCanvas.height - 30;
+        dx = 3;
+        dy = -3;
+        paddleX = (gameCanvas.width - paddleWidth) / 2;
+      }
     }
   }
 
-  // Win condition / Game loop continuous
+  // Move paddle
+  if (rightPressed && paddleX < gameCanvas.width - paddleWidth) { paddleX += 5; }
+  else if (leftPressed && paddleX > 0) { paddleX -= 5; }
+
+  x += dx;
+  y += dy;
+
+  if (isPlaying) {
+    animationId = requestAnimationFrame(draw);
+  }
 }
+
+function initGame() {
+  isPlaying = true;
+  score = 0;
+  lives = 3;
+  scoreEl.textContent = score;
+  livesEl.textContent = lives;
+  statusEl.textContent = "Playing...";
+  statusEl.style.color = "#38bdf8";
+  startBtn.textContent = "Restart Game";
+  
+  x = gameCanvas.width / 2;
+  y = gameCanvas.height - 30;
+  dx = 3;
+  dy = -3;
+  paddleX = (gameCanvas.width - paddleWidth) / 2;
+  
+  initBricks();
+  cancelAnimationFrame(animationId);
+  draw();
+}
+
+// Initial draw before starting
+gCtx.fillStyle = "#e2e8f0";
+gCtx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+initBricks();
+drawBricks();
+drawPaddle();
